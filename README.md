@@ -1,10 +1,20 @@
 # Masama
 
-Aplikasi split bill berbahasa Indonesia: masukkan item, tambah teman, tentukan siapa membayar, lalu bagikan ringkasan. Pajak, service, dan diskon dibagi proporsional; hasil pembulatan tetap sesuai total. Draft disimpan otomatis di perangkat.
+Buka langsung: **https://evelont6.github.io/masama/**
+
+Split bill gratis, tanpa akun, API key, atau backend berbayar. Ambil foto struk atau isi manual, tambah teman, tentukan pembagian, lalu bagikan ringkasan.
+
+## Scan gratis
+
+Tesseract.js membaca foto langsung di browser. Foto tidak dikirim ke server. File OCR diunduh dari situs Masama saat pertama digunakan; proses berikutnya dapat memakai cache browser. File OCR tidak diunduh ketika pengguna hanya mengisi manual.
+
+Setiap scan menampilkan pratinjau untuk diperiksa. OCR dapat salah membaca atau melewatkan baris, terutama foto buram dan format struk yang rumit. Bandingkan total tercetak, lalu gunakan **Pakai hasil & edit** untuk mengoreksi item, pajak, service, dan diskon sebelum membagi. Input manual selalu tersedia.
+
+Tidak ada tagihan API atau biaya per scan. Hosting menggunakan GitHub Pages pada repository publik, mengikuti batas layanan GitHub. Kuota internet perangkat tetap mengikuti operator pengguna.
 
 ## Jalankan lokal
 
-Gunakan Node 22.12 atau lebih baru.
+Node 22.12+:
 
 ```sh
 npm ci
@@ -12,20 +22,14 @@ npm run dev
 npm test
 ```
 
-## GitHub Pages
+`predev` dan `prebuild` menyiapkan aset OCR dari paket npm. `public/ocr/` adalah hasil generate dan tidak perlu masuk Git. `npm test` memeriksa perhitungan, pemulihan draft, parser struk, manifest, dan worker offline.
 
-Workflow `.github/workflows/deploy.yml` menguji aplikasi lalu menerbitkan `dist` saat perubahan masuk ke `main`. Atur Settings → Pages → Source ke **GitHub Actions**. Alamat yang dituju: https://evelont6.github.io/masama/.
+## Deployment
 
-Build Pages memakai `VITE_BASE_PATH=/masama/` dan `VITE_STATIC_HOST=true`. Scan AI ditandai belum tersedia jika backend belum dikonfigurasi. Semua fitur split manual dan PWA tetap tersedia.
-
-## Backend scan opsional
-
-`api/parse-receipt.js` adalah fungsi Vercel. Impor repo ke Vercel lalu set secret server `GEMINI_API_KEY`. Frontend dan backend pada domain Vercel yang sama menggunakan `/api/parse-receipt`. Jangan menaruh API key dalam variabel `VITE_*` atau GitHub.
-
-Untuk frontend Pages, set repository variable `VITE_RECEIPT_API_URL` ke endpoint HTTPS backend yang mengizinkan origin Pages melalui CORS. Workflow perlu dijalankan ulang setelah variabel berubah. Tanpa backend ini, gunakan input manual.
+Settings → Pages → Source: **GitHub Actions**. Workflow `.github/workflows/deploy.yml` menguji dan membangun aplikasi untuk `/masama/`, lalu deploy saat push ke `main`. Tidak ada secret yang perlu dipasang. Endpoint Gemini lama sudah dihapus.
 
 ## PWA
 
-Lihat [panduan instalasi](MOBILE.md). Manifest, ikon, dan service worker ikut dibangun. Offline tersedia setelah kunjungan online pertama. Pembaruan aktif setelah semua jendela versi lama ditutup.
+Lihat [panduan instalasi dan offline](MOBILE.md). Draft dan rekening hanya tersimpan di browser perangkat ini; belum ada sinkronisasi antarperangkat.
 
-Dokumentasi deployment: [Vite](https://vite.dev/guide/static-deploy), [GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
+Referensi: [Tesseract.js](https://github.com/naptha/tesseract.js), [GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages), [batas hosting](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits).

@@ -27,8 +27,6 @@ jobs:
       - run: npm run build
         env:
           VITE_BASE_PATH: /masama/
-          VITE_STATIC_HOST: 'true'
-          VITE_RECEIPT_API_URL: ${{ vars.VITE_RECEIPT_API_URL }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

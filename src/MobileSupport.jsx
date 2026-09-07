@@ -31,7 +31,7 @@ export default function MobileSupport() {
     finally { setPrompt(null); }
   }
   return <aside className="mb-5 text-sm space-y-2">
-    {!online && <p role="status" className="rounded-xl bg-amber-100 p-3">Sedang offline. Isi dan bagi biaya manual tetap bisa. Scan AI butuh internet.</p>}
+    {!online && <p role="status" className="rounded-xl bg-amber-100 p-3">Sedang offline. Isi dan bagi tagihan tetap bisa. Scan bisa digunakan jika file OCR sudah tersimpan dari scan sebelumnya.</p>}
     {storageError && <p role="alert" className="rounded-xl bg-amber-100 p-3">Draft tidak bisa disimpan di browser ini. Jangan tutup aplikasi sebelum menyalin ringkasan.</p>}
     {!installed && <button onClick={install} className="text-emerald-800 font-medium">Pasang Masama di HP <span aria-hidden="true">↗</span></button>}
     {help && !installed && <div className="rounded-xl bg-white border border-gray-200 p-3 space-y-2">

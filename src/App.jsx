@@ -18,6 +18,8 @@ import {
 
 import { useSavedState } from "./storage.js";
 import MobileSupport from "./MobileSupport.jsx";
+import ReceiptReview from "./ReceiptReview.jsx";
+import { scanReceipt } from "./ocr.js";
 
 const COLORS = {
   bg: "#F5F5F7",
@@ -41,7 +43,6 @@ const STEPS = [
 ];
 
 const STORAGE_KEY = "masama-payment-settings";
-const scanAvailable = import.meta.env.VITE_STATIC_HOST !== "true" || Boolean(import.meta.env.VITE_RECEIPT_API_URL);
 
 function uid() {
   return Math.random().toString(36).slice(2, 10);
@@ -61,52 +62,6 @@ function initials(name) {
 function formatRp(n) {
   if (n == null || isNaN(n)) return "Rp0";
   return "Rp" + Math.round(n).toLocaleString("id-ID");
-}
-
-function fileToBase64(file, maxDim = 1400, quality = 0.82) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round(height * (maxDim / width));
-            width = maxDim;
-          } else {
-            width = Math.round(width * (maxDim / height));
-            height = maxDim;
-          }
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL("image/jpeg", quality);
-        resolve(dataUrl.split(",")[1]);
-      };
-      img.onerror = reject;
-      img.src = e.target.result;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-async function parseReceipt(base64Image) {
-  const response = await fetch(import.meta.env.VITE_RECEIPT_API_URL || "/api/parse-receipt", {
-    signal: AbortSignal.timeout(30000),
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: base64Image }),
-  });
-  const data = await response.json().catch(() => { throw new Error("Scan AI belum tersedia di server ini. Kamu tetap bisa isi manual."); });
-  if (!response.ok) {
-    throw new Error(data?.error || "Gagal baca struk");
-  }
-  return data;
 }
 
 function Avatar({ name, color, size = 32 }) {
@@ -169,6 +124,10 @@ export default function App() {
   const [discountValue, setDiscountValue] = useSavedState("discountValue", 0);
 
   const [loadingReceipt, setLoadingReceipt] = useState(false);
+  const [scanProgress, setScanProgress] = useState("");
+  const [pendingReceipt, setPendingReceipt] = useState(null);
+  const scanController = useRef(null);
+  useEffect(() => () => scanController.current?.abort(), []);
   const [receiptError, setReceiptError] = useState(null);
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
@@ -264,49 +223,39 @@ export default function App() {
   }
 
   async function handleFileSelected(e) {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    if (!navigator.onLine) { setReceiptError("Scan AI butuh internet. Isi biaya manual saat offline."); e.target.value = ""; return; }
-    if (!file.type.startsWith("image/") || file.size > 20 * 1024 * 1024) { setReceiptError("Pilih gambar maksimal 20 MB."); e.target.value = ""; return; }
+    const file = e.target.files?.[0];
     e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 20 * 1024 * 1024) {
+      setReceiptError("Pilih foto JPG, PNG, atau WebP maksimal 20 MB."); return;
+    }
     setLoadingReceipt(true);
     setReceiptError(null);
+    setScanProgress("Menyiapkan foto...");
+    const controller = new AbortController();
+    scanController.current = controller;
     try {
-      const base64 = await fileToBase64(file);
-      const parsed = await parseReceipt(base64);
-      if (!Array.isArray(parsed.items)) throw new Error("Invalid receipt");
-      setAssignments({});
-      setTaxValue(0);
-      setServiceValue(0);
-      setDiscountValue(0);
-      const newItems = parsed.items.map((it) => ({
-        id: uid(),
-        name: it.name || "Item",
-        price: Number(it.price) || 0,
-      }));
-      setItems(newItems.length > 0 ? newItems : [{ id: uid(), name: "", price: 0 }]);
-      if (parsed.tax_amount != null) {
-        setTaxMode("amount");
-        setTaxValue(Number(parsed.tax_amount) || 0);
-      } else if (parsed.tax_percent != null) {
-        setTaxMode("percent");
-        setTaxValue(Number(parsed.tax_percent) || 0);
-      }
-      if (parsed.service_amount != null) {
-        setServiceMode("amount");
-        setServiceValue(Number(parsed.service_amount) || 0);
-      } else if (parsed.service_percent != null) {
-        setServiceMode("percent");
-        setServiceValue(Number(parsed.service_percent) || 0);
-      }
-      if (parsed.discount_amount != null) {
-        setDiscountValue(Number(parsed.discount_amount) || 0);
-      }
-    } catch (err) {
-      setReceiptError(err.name === "TimeoutError" ? "Scan terlalu lama. Coba lagi atau isi manual." : err.message || "Gagal baca struk. Coba foto ulang atau isi manual.");
+      const parsed = await scanReceipt(file, setScanProgress, controller.signal);
+      if (!controller.signal.aborted) setPendingReceipt(parsed);
+    } catch (error) {
+      if (!controller.signal.aborted) setReceiptError(navigator.onLine
+        ? "Foto belum berhasil dibaca. Gunakan foto jelas berformat JPG/PNG/WebP atau isi manual."
+        : "Pembaca struk belum siap offline. Sambungkan internet untuk scan pertama, atau isi manual.");
     } finally {
+      scanController.current = null;
       setLoadingReceipt(false);
     }
+  }
+
+  function useScannedReceipt() {
+    setItems(pendingReceipt.items.map(item => ({ ...item, id: uid() })));
+    setAssignments({});
+    setTaxMode("amount");
+    setServiceMode("amount");
+    setTaxValue(pendingReceipt.tax_amount || 0);
+    setServiceValue(pendingReceipt.service_amount || 0);
+    setDiscountValue(pendingReceipt.discount_amount || 0);
+    setPendingReceipt(null);
   }
 
   function handleAddPerson() {
@@ -353,6 +302,7 @@ export default function App() {
     setServiceValue(0);
     setDiscountValue(0);
     setReceiptError(null);
+    setPendingReceipt(null);
     setExpandedPerson(null);
     setStep("items");
   }
@@ -439,6 +389,7 @@ export default function App() {
 
         {step === "items" && (
           <div>
+            {pendingReceipt && <ReceiptReview receipt={pendingReceipt} onUse={useScannedReceipt} onCancel={() => setPendingReceipt(null)} />}
             {receiptError && (
               <div className="flex items-start gap-2 p-3 rounded-xl mb-4" style={{ background: COLORS.dangerSoft }}>
                 <AlertCircle size={16} style={{ color: COLORS.danger, marginTop: 2, flexShrink: 0 }} />
@@ -451,13 +402,14 @@ export default function App() {
             {loadingReceipt && (
               <div className="flex flex-col items-center justify-center gap-3 py-10">
                 <Loader2 className="animate-spin" size={24} style={{ color: COLORS.accent }} />
-                <span className="text-sm" style={{ color: COLORS.textSecondary }}>
-                  Membaca struk...
+                <span role="status" aria-live="polite" className="text-sm" style={{ color: COLORS.textSecondary }}>
+                  {scanProgress}
                 </span>
+                <button className="text-sm text-emerald-800" onClick={() => scanController.current?.abort()}>Batalkan scan</button>
               </div>
             )}
 
-            {!loadingReceipt && items.length === 0 && (
+            {!loadingReceipt && !pendingReceipt && items.length === 0 && (
               <div>
                 <input
                   ref={cameraInputRef}
@@ -476,7 +428,6 @@ export default function App() {
                 />
                 <button
                   type="button"
-                  disabled={!scanAvailable}
                   onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
                   className="w-full flex flex-col items-center justify-center gap-2 py-10 rounded-2xl"
                   style={{ border: `1.5px dashed ${COLORS.border}`, background: COLORS.surface }}
@@ -489,14 +440,13 @@ export default function App() {
                   </div>
                   <span className="text-sm font-medium">Ambil foto struk</span>
                   <span className="text-xs" style={{ color: COLORS.textSecondary }}>
-                    {scanAvailable ? "AI baca item dan harga. Periksa hasilnya sebelum lanjut." : "Scan AI belum tersedia. Mulai dengan isi manual di bawah."}
+                    Gratis, dibaca di perangkat. Foto tidak dikirim ke server.
                   </span>
                 </button>
                 <div className="flex items-center justify-center gap-4 mt-3">
                   <button
                     type="button"
-                    disabled={!scanAvailable}
-                    onClick={() => galleryInputRef.current && galleryInputRef.current.click()}
+                      onClick={() => galleryInputRef.current && galleryInputRef.current.click()}
                     className="text-sm font-medium py-2"
                     style={{ color: COLORS.accent }}
                   >
@@ -515,7 +465,7 @@ export default function App() {
               </div>
             )}
 
-            {!loadingReceipt && items.length > 0 && (
+            {!loadingReceipt && !pendingReceipt && items.length > 0 && (
               <div>
                 <div className="rounded-xl overflow-hidden" style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}` }}>
                   <div className="px-3.5">

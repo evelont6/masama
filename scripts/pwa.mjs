@@ -14,11 +14,12 @@ const assets = paths.map(p => base + p.slice(5));
 await writeFile("dist/sw.js", `
 const CACHE = ${JSON.stringify(cache)};
 const ASSETS = ${JSON.stringify(assets)};
+const SHELL = ASSETS.filter(path => !path.startsWith(${JSON.stringify(base + 'ocr/')}));
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)));
 });
 self.addEventListener('activate', event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('masama-') && key !== CACHE).map(key => caches.delete(key)))));
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('masama-') && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
@@ -26,7 +27,13 @@ self.addEventListener('fetch', event => {
   if (event.request.mode === 'navigate') {
     event.respondWith(caches.open(CACHE).then(cache => cache.match(${JSON.stringify(base + 'index.html')})).then(cached => cached || fetch(event.request)));
   } else if (ASSETS.includes(url.pathname)) {
-    event.respondWith(caches.open(CACHE).then(cache => cache.match(url.pathname)).then(cached => cached || fetch(event.request)));
+    event.respondWith(caches.open(CACHE).then(async cache => {
+      const cached = await cache.match(url.pathname);
+      if (cached) return cached;
+      const response = await fetch(event.request);
+      if (response.ok) { try { await cache.put(url.pathname, response.clone()); } catch {} }
+      return response;
+    }));
   }
 });
 `);
