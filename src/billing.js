@@ -30,7 +30,35 @@ export function calculateBill({ items, people, assignments, taxMode, taxValue, s
     const results = people.map((p) => {
       const subtotalShare = raw[p.id] || 0;
       const extraShare = totalRaw > 0 ? (subtotalShare / totalRaw) * extra : extra / people.length;
-      return { id: p.id, name: p.name, color: p.color, subtotalShare, extraShare, exact: subtotalShare + extraShare };
+      const breakdown = items
+        .map((it) => {
+          const assigned = assignedPeople(it.id, assignments, people);
+          if (!assigned.includes(p.id)) return null;
+          return {
+            id: it.id,
+            name: it.name || "Item",
+            totalPrice: money(it.price),
+            share: money(it.price) / assigned.length,
+            splitCount: assigned.length,
+          };
+        })
+        .filter(Boolean);
+      const ratio = totalRaw > 0 ? subtotalShare / totalRaw : 1 / people.length;
+      const taxShare = taxAmount * ratio;
+      const serviceShare = serviceAmount * ratio;
+      const discountShare = discount * ratio;
+      return {
+        id: p.id,
+        name: p.name,
+        color: p.color,
+        subtotalShare,
+        extraShare,
+        taxShare,
+        serviceShare,
+        discountShare,
+        exact: subtotalShare + extraShare,
+        breakdown,
+      };
     });
     const rounded = results.map((r) => ({ ...r, amount: Math.floor(Math.max(0, r.exact)) }));
     const roundedSum = rounded.reduce((s, r) => s + r.amount, 0);

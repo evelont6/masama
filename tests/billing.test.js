@@ -29,3 +29,22 @@ test("removed or empty assignments fall back to current participants", () => {
     assert.equal(result.perPerson.reduce((sum, p) => sum + p.subtotalShare, 0), 10000);
   }
 });
+test("each person includes item and charge breakdown details", () => {
+  const result = calculateBill({
+    items: [{ id: "shared", name: "Nasi", price: 30000 }, { id: "solo", name: "Es teh", price: 10000 }],
+    people: [{ id: "a", name: "Ana" }, { id: "b", name: "Budi" }],
+    assignments: { shared: ["a", "b"], solo: ["a"] },
+    taxMode: "amount", taxValue: 4000,
+    serviceMode: "amount", serviceValue: 2000,
+    discountValue: 2000,
+  });
+  const ana = result.perPerson.find(person => person.id === "a");
+  const budi = result.perPerson.find(person => person.id === "b");
+  assert.deepEqual(ana.breakdown.map(item => [item.name, item.totalPrice, item.splitCount, item.share]), [
+    ["Nasi", 30000, 2, 15000], ["Es teh", 10000, 1, 10000],
+  ]);
+  assert.deepEqual(budi.breakdown.map(item => [item.name, item.splitCount, item.share]), [["Nasi", 2, 15000]]);
+  assert.equal(ana.taxShare + budi.taxShare, 4000);
+  assert.equal(ana.serviceShare + budi.serviceShare, 2000);
+  assert.equal(ana.discountShare + budi.discountShare, 2000);
+});

@@ -9,6 +9,10 @@ import {
   Check,
   Copy,
   Share2,
+  MessageCircle,
+  Send,
+  Mail,
+  Smartphone,
   CreditCard,
   Loader2,
   AlertCircle,
@@ -113,6 +117,26 @@ function ChargeRow({ label, mode, setMode, value, setValue }) {
   );
 }
 
+function ShareButton({ icon: Icon, label, onClick, tone = "default" }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="share-option flex flex-col items-center justify-center gap-2 rounded-2xl p-3 text-center"
+      style={{
+        background: tone === "accent" ? COLORS.accentSoft : COLORS.bg,
+        color: tone === "accent" ? COLORS.accent : COLORS.text,
+        border: `1px solid ${tone === "accent" ? "#BCE4D5" : COLORS.border}`,
+      }}
+    >
+      <span className="flex h-10 w-10 items-center justify-center rounded-full" style={{ background: tone === "accent" ? COLORS.accent : COLORS.surface, color: tone === "accent" ? "#fff" : COLORS.accent }}>
+        <Icon size={19} />
+      </span>
+      <span className="text-xs font-medium leading-tight">{label}</span>
+    </button>
+  );
+}
+
 export default function App() {
   const [step, setStep] = useSavedState("step", "items");
 
@@ -131,6 +155,7 @@ export default function App() {
   const [receiptError, setReceiptError] = useState(null);
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const [people, setPeople] = useSavedState("people", []);
   const [newPersonName, setNewPersonName] = useState("");
@@ -139,6 +164,7 @@ export default function App() {
 
   const [expandedPerson, setExpandedPerson] = useState(null);
   const [copyState, setCopyState] = useState("idle");
+  const [shareOpen, setShareOpen] = useState(false);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [yourName, setYourName] = useState("");
@@ -152,13 +178,17 @@ export default function App() {
   }, [step, items.length, people.length, setStep]);
 
   useEffect(() => {
-    if (!settingsOpen) return;
+    if (!settingsOpen && !shareOpen) return;
     const previous = document.activeElement;
     const dialog = document.querySelector('[role="dialog"]');
+    if (!dialog) return;
     const controls = () => [...dialog.querySelectorAll('button:not(:disabled), input')];
     controls()[0]?.focus();
     const keydown = event => {
-      if (event.key === "Escape") setSettingsOpen(false);
+      if (event.key === "Escape") {
+        if (shareOpen) setShareOpen(false);
+        else setSettingsOpen(false);
+      }
       if (event.key !== "Tab") return;
       const list = controls();
       const first = list[0], last = list[list.length - 1];
@@ -169,7 +199,7 @@ export default function App() {
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { document.removeEventListener("keydown", keydown); document.body.style.overflow = overflow; previous?.focus(); };
-  }, [settingsOpen]);
+  }, [settingsOpen, shareOpen]);
 
   useEffect(() => {
     try {
@@ -222,9 +252,7 @@ export default function App() {
     setItems((prev) => prev.filter((it) => it.id !== id));
   }
 
-  async function handleFileSelected(e) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
+  async function scanReceiptFile(file) {
     if (!file) return;
     if (!file.type.startsWith("image/") || file.size > 20 * 1024 * 1024) {
       setReceiptError("Pilih foto JPG, PNG, atau WebP maksimal 20 MB."); return;
@@ -245,6 +273,22 @@ export default function App() {
       scanController.current = null;
       setLoadingReceipt(false);
     }
+  }
+
+  function handleFileSelected(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    void scanReceiptFile(file);
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    setIsDragging(false);
+    void scanReceiptFile(e.dataTransfer.files?.[0]);
+  }
+
+  function handleDragLeave(e) {
+    if (!e.currentTarget.contains(e.relatedTarget)) setIsDragging(false);
   }
 
   function useScannedReceipt() {
@@ -310,10 +354,19 @@ export default function App() {
   const { computedSubtotal, taxAmount, serviceAmount, discount, grandTotal, perPerson } = calculateBill({ items, people, assignments, taxMode, taxValue, serviceMode, serviceValue, discountValue });
 
   function buildSummaryText() {
-    const lines = ["Masama", ""];
+    const lines = ["Masama — Ringkasan tagihan", ""];
 
-    perPerson.forEach((p) => lines.push(`${p.name}: ${formatRp(p.amount)}`));
-    lines.push("", `Total: ${formatRp(grandTotal)}`);
+    perPerson.forEach((p) => {
+      lines.push(`${p.name}: ${formatRp(p.amount)}`);
+      p.breakdown.forEach((item) => {
+        lines.push(`  • ${item.name}: ${formatRp(item.share)} (dari ${formatRp(item.totalPrice)}, dibagi ${item.splitCount} orang)`);
+      });
+      if (p.taxShare) lines.push(`  • Pajak: ${formatRp(p.taxShare)}`);
+      if (p.serviceShare) lines.push(`  • Service: ${formatRp(p.serviceShare)}`);
+      if (p.discountShare) lines.push(`  • Diskon: -${formatRp(p.discountShare)}`);
+      lines.push("");
+    });
+    lines.push(`Total tagihan: ${formatRp(grandTotal)}`);
     if (paymentMethods.length > 0) {
       lines.push("", "Transfer ke:");
       paymentMethods.forEach((m) => {
@@ -332,16 +385,20 @@ export default function App() {
       setCopyState("error");
     }
   }
-  async function handleShare() {
+  function openShareUrl(url) {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  async function handleNativeShare() {
     const text = buildSummaryText();
     if (navigator.share) {
       try {
-        await navigator.share({ text });
+        await navigator.share({ title: "Ringkasan tagihan Masama", text });
       } catch (e) {
-        if (e.name !== "AbortError") await handleCopy();
+        if (e.name !== "AbortError") setCopyState("error");
       }
     } else {
-      handleCopy();
+      await handleCopy();
     }
   }
 
@@ -355,9 +412,10 @@ export default function App() {
         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif',
         color: COLORS.text,
       }}
-      className="flex justify-center px-4 py-6"
+      className="app-page"
     >
-      <div className="w-full max-w-md">
+      <div className="app-shell">
+      <div className="app-content">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-semibold tracking-tight">Masama</h1>
           <button
@@ -410,7 +468,13 @@ export default function App() {
             )}
 
             {!loadingReceipt && !pendingReceipt && items.length === 0 && (
-              <div>
+              <div
+                className={`upload-zone ${isDragging ? "is-dragging" : ""}`}
+                onDragEnter={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setIsDragging(true); }}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
                 <input
                   ref={cameraInputRef}
                   type="file"
@@ -429,8 +493,8 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
-                  className="w-full flex flex-col items-center justify-center gap-2 py-10 rounded-2xl"
-                  style={{ border: `1.5px dashed ${COLORS.border}`, background: COLORS.surface }}
+                  className="upload-zone-action w-full flex flex-col items-center justify-center gap-2 py-10 rounded-2xl"
+                  style={{ border: `1.5px dashed ${isDragging ? COLORS.accent : COLORS.border}`, background: COLORS.surface }}
                 >
                   <div
                     className="w-12 h-12 rounded-full flex items-center justify-center"
@@ -443,14 +507,17 @@ export default function App() {
                     Gratis, dibaca di perangkat. Foto tidak dikirim ke server.
                   </span>
                 </button>
+                <p className="upload-hint text-center text-xs" style={{ color: isDragging ? COLORS.accent : COLORS.textSecondary }}>
+                  {isDragging ? "Lepaskan foto struk di sini" : "Di komputer, tarik foto ke kotak ini atau pilih file"}
+                </p>
                 <div className="flex items-center justify-center gap-4 mt-3">
                   <button
                     type="button"
-                      onClick={() => galleryInputRef.current && galleryInputRef.current.click()}
+                    onClick={() => galleryInputRef.current && galleryInputRef.current.click()}
                     className="text-sm font-medium py-2"
                     style={{ color: COLORS.accent }}
                   >
-                    Upload dari galeri
+                    Pilih dari galeri / file
                   </button>
                   <span style={{ color: COLORS.border }}>|</span>
                   <button
@@ -750,14 +817,41 @@ export default function App() {
                       )}
                     </button>
                     {expanded && (
-                      <div className="px-3.5 pb-3.5 space-y-1">
-                        <div className="flex justify-between text-xs" style={{ color: COLORS.textSecondary }}>
-                          <span>Item</span>
-                          <span className="tabular-nums">{formatRp(p.subtotalShare)}</span>
+                      <div className="person-breakdown px-3.5 pb-4">
+                        <div className="flex items-center justify-between mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: COLORS.textSecondary }}>
+                          <span>Rincian harga</span>
+                          <span>Bagian {p.name}</span>
                         </div>
-                        <div className="flex justify-between text-xs" style={{ color: COLORS.textSecondary }}>
-                          <span>Pajak, service &amp; diskon</span>
-                          <span className="tabular-nums">{formatRp(p.extraShare)}</span>
+                        <div className="space-y-2">
+                          {p.breakdown.map((item) => (
+                            <div key={item.id} className="flex items-start justify-between gap-3 text-sm">
+                              <div className="min-w-0">
+                                <p className="font-medium truncate">{item.name}</p>
+                                <p className="text-xs" style={{ color: COLORS.textSecondary }}>
+                                  {formatRp(item.totalPrice)} dibagi {item.splitCount} orang
+                                </p>
+                              </div>
+                              <span className="shrink-0 font-medium tabular-nums">{formatRp(item.share)}</span>
+                            </div>
+                          ))}
+                          {p.taxShare > 0 && (
+                            <div className="flex justify-between gap-3 text-sm" style={{ color: COLORS.textSecondary }}>
+                              <span>Pajak</span><span className="tabular-nums">{formatRp(p.taxShare)}</span>
+                            </div>
+                          )}
+                          {p.serviceShare > 0 && (
+                            <div className="flex justify-between gap-3 text-sm" style={{ color: COLORS.textSecondary }}>
+                              <span>Service</span><span className="tabular-nums">{formatRp(p.serviceShare)}</span>
+                            </div>
+                          )}
+                          {p.discountShare > 0 && (
+                            <div className="flex justify-between gap-3 text-sm" style={{ color: COLORS.danger }}>
+                              <span>Diskon</span><span className="tabular-nums">-{formatRp(p.discountShare)}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex justify-between gap-3 mt-3 pt-2 text-sm font-semibold" style={{ borderTop: `1px solid ${COLORS.border}` }}>
+                          <span>Total {p.name}</span><span className="tabular-nums">{formatRp(p.amount)}</span>
                         </div>
                       </div>
                     )}
@@ -805,7 +899,7 @@ export default function App() {
               </button>
               <button
                 type="button"
-                onClick={handleShare}
+                onClick={() => setShareOpen(true)}
                 className="flex-1 py-3.5 rounded-full font-medium text-sm flex items-center justify-center gap-1.5"
                 style={{ background: COLORS.accent, color: "#fff" }}
               >
@@ -820,7 +914,7 @@ export default function App() {
         )}
       </div>
 
-      {settingsOpen && (
+        {settingsOpen && (
         <div
           className="fixed inset-0 flex items-end justify-center z-50"
           style={{ background: "rgba(0,0,0,0.35)" }}
@@ -896,6 +990,44 @@ export default function App() {
           </div>
         </div>
       )}
+      {shareOpen && (
+        <div
+          className="share-overlay fixed inset-0 flex items-end justify-center z-50"
+          style={{ background: "rgba(0,0,0,0.35)" }}
+          onClick={() => setShareOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Bagikan ringkasan tagihan"
+            className="share-sheet w-full max-w-2xl rounded-t-3xl p-5 overflow-y-auto"
+            style={{ background: COLORS.surface, maxHeight: "92vh" }}
+          >
+            <div className="flex justify-between items-center mb-2">
+              <div>
+                <h2 className="text-lg font-semibold">Bagikan tagihan</h2>
+                <p className="text-sm mt-1" style={{ color: COLORS.textSecondary }}>Pilih aplikasi atau salin pesan lengkapnya.</p>
+              </div>
+              <button aria-label="Tutup bagikan" type="button" onClick={() => setShareOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <pre className="share-preview whitespace-pre-wrap break-words rounded-2xl p-4 text-sm leading-relaxed" aria-label="Pratinjau pesan yang dibagikan">{buildSummaryText()}</pre>
+
+            <div className="share-grid grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-4">
+              <ShareButton icon={MessageCircle} label="WhatsApp" onClick={() => openShareUrl(`https://wa.me/?text=${encodeURIComponent(buildSummaryText())}`)} tone="accent" />
+              <ShareButton icon={Send} label="Telegram" onClick={() => openShareUrl(`https://t.me/share/url?url=&text=${encodeURIComponent(buildSummaryText())}`)} />
+              <ShareButton icon={Mail} label="Email" onClick={() => openShareUrl(`mailto:?subject=${encodeURIComponent("Ringkasan tagihan Masama")}&body=${encodeURIComponent(buildSummaryText())}`)} />
+              <ShareButton icon={Copy} label={copyState === "copied" ? "Tersalin" : "Salin pesan"} onClick={handleCopy} />
+              <ShareButton icon={Smartphone} label="Aplikasi lainnya" onClick={handleNativeShare} />
+            </div>
+            <p className="text-center text-xs mt-3" style={{ color: COLORS.textSecondary }}>Aplikasi lainnya memakai share sheet bawaan perangkat jika tersedia.</p>
+          </div>
+        </div>
+      )}
+      </div>
     </div>
   );
 }
