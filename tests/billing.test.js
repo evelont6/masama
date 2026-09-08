@@ -3,6 +3,22 @@ import assert from "node:assert/strict";
 import { calculateBill } from "../src/billing.js";
 
 const base = { items: [{ id: "coffee", price: 10000 }], people: [{ id: "a" }, { id: "b" }, { id: "c" }], assignments: {}, taxMode: "percent", taxValue: 0, serviceMode: "percent", serviceValue: 0, discountValue: 0 };
+test('international bills settle exactly in currency minor units', () => {
+  for (const [currency, price, expected] of [
+    ['USD', 10, [3.34, 3.33, 3.33]],
+    ['EUR', 0.02, [0.01, 0.01, 0]],
+    ['JPY', 10, [4, 3, 3]],
+    ['KWD', 1, [0.334, 0.333, 0.333]],
+  ]) {
+    const result = calculateBill({ ...base, currency, items: [{ id: 'coffee', price }] });
+    assert.deepEqual(result.perPerson.map(p => p.amount), expected, currency);
+    for (const person of result.perPerson) {
+      const digits = currency === 'JPY' ? 0 : currency === 'KWD' ? 3 : 2;
+      const unit = 10 ** digits;
+      assert.equal(Math.round(person.breakdown.reduce((sum, item) => sum + Math.round(item.share * unit), 0) + person.roundingAdjustment * unit), Math.round(person.amount * unit));
+    }
+  }
+});
 test("rounded shares exactly match total", () => {
   const result = calculateBill(base);
   assert.equal(result.perPerson.reduce((sum, p) => sum + p.amount, 0), 10000);

@@ -1,24 +1,26 @@
+import { currencyDigits } from './currency.js';
 // Conservative text parsing: every result is reviewed before entering the bill.
-export function parseMoney(token) {
-  const value = token.replace(/\s|Rp|IDR/gi, '');
+export function parseMoney(token, currency = 'IDR') {
+  const value = token.replace(/\s|Rp|[A-Z]{3}|[$€£¥₩₹₱฿]/gi, '');
   if (/^\d+$/.test(value)) return Number(value);
+  if (currencyDigits(currency) === 3 && /^\d+[.,]\d{3}$/.test(value)) return Number(value.replace(',', '.'));
   if (/^\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{2})?$/.test(value)) {
     const decimal = /[.,]\d{2}$/.test(value);
     return Number(decimal ? value.slice(0, -3).replace(/[.,]/g, '') + '.' + value.slice(-2) : value.replace(/[.,]/g, ''));
   }
-  if (/^\d+[.,]\d{2}$/.test(value)) return Number(value.replace(',', '.'));
+  if (/^\d+[.,]\d{1,2}$/.test(value)) return Number(value.replace(',', '.'));
   return null;
 }
 
-export function parseReceiptText(text) {
+export function parseReceiptText(text, currency = 'IDR') {
   const result = { items: [], tax_amount: null, service_amount: null, discount_amount: null, total: null, text };
   for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim().replace(/\s+/g, ' ');
+    const line = raw.replace(/\b(?:USD|EUR|GBP|SGD|MYR|AUD|CAD|JPY|KRW|CNY|HKD|THB|INR|PHP|VND|AED|SAR|CHF|NZD|KWD|BHD)\b|[$€£¥₩₹₱฿]/gi, ' ').replace(/\s+/g, ' ').trim();
     if (!line || /%\s*$/.test(line)) continue;
     const match = line.match(/^(.*?)\s+(?:Rp\.?\s*|IDR\s*)?(-?\d[\d.,]*)(?:\s*(?:Rp|IDR))?$/i);
     if (!match) continue;
     const label = match[1].replace(/\s*(?:Rp\.?|IDR)\s*$/i, '').trim();
-    const price = parseMoney(match[2]);
+    const price = parseMoney(match[2], currency);
     if (price == null || price < 0 || price > 1_000_000_000 || !/[a-z]/i.test(label)) continue;
     if (/^(?:sub\s*total|subtotal|jumlah item|total item|qty)\b/i.test(label)) continue;
     if (/^(?:grand\s*total|total(?:\s+(?:akhir|bayar|tagihan|belanja|due))?|jumlah(?:\s+bayar)?)\s*[:=]?$/i.test(label)) { result.total = price; continue; }

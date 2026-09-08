@@ -1,3 +1,5 @@
+import { currencyDigits } from './currency.js';
+
 const money = value => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
 
 export function assignedPeople(itemId, assignments, people) {
@@ -5,7 +7,7 @@ export function assignedPeople(itemId, assignments, people) {
   return valid.length ? valid : people.map(p => p.id);
 }
 
-export function calculateBill({ items, people, assignments, taxMode, taxValue, serviceMode, serviceValue, discountValue }) {
+export function calculateBill({ items, people, assignments, taxMode, taxValue, serviceMode, serviceValue, discountValue, currency = 'IDR' }) {
   const computedSubtotal = items.reduce((sum, it) => sum + (money(it.price)), 0);
   const taxAmount = taxMode === "percent" ? (computedSubtotal * (money(taxValue))) / 100 : money(taxValue);
   const serviceAmount =
@@ -60,13 +62,18 @@ export function calculateBill({ items, people, assignments, taxMode, taxValue, s
         breakdown,
       };
     });
-    const rounded = results.map((r) => ({ ...r, amount: Math.floor(Math.max(0, r.exact)) }));
+    const scale = 10 ** currencyDigits(currency);
+    const rounded = results.map((r) => ({ ...r, amount: Math.floor(Math.max(0, r.exact * scale)) }));
     const roundedSum = rounded.reduce((s, r) => s + r.amount, 0);
-    const target = Math.round(grandTotal);
+    const target = Math.round(grandTotal * scale);
     const diff = target - roundedSum;
-    const order = rounded.map((r, i) => ({ i, fraction: r.exact - r.amount })).sort((a, b) => b.fraction - a.fraction);
+    const order = rounded.map((r, i) => ({ i, fraction: r.exact * scale - r.amount })).sort((a, b) => b.fraction - a.fraction);
     for (let i = 0; i < diff; i++) rounded[order[i % order.length].i].amount += 1;
-    return rounded;
+    return rounded.map(r => {
+      const displayed = r.breakdown.reduce((sum, item) => sum + Math.round(item.share * scale), 0)
+        + Math.round(r.taxShare * scale) + Math.round(r.serviceShare * scale) - Math.round(r.discountShare * scale);
+      return { ...r, amount: r.amount / scale, roundingAdjustment: (r.amount - displayed) / scale };
+    });
   })();
 
   return { computedSubtotal, taxAmount, serviceAmount, discount, grandTotal, perPerson };

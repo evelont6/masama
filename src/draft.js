@@ -1,7 +1,10 @@
+import { CURRENCIES } from './currency.js';
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const amount = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1_000_000_000;
 export function validateDraft(key, saved, initial) {
   if (saved == null) return initial;
+  if (key === 'currency') return CURRENCIES.includes(saved) ? saved : initial;
+  if (key === 'language') return ['id', 'en'].includes(saved) ? saved : initial;
   if (key === 'step') return ['items', 'people', 'assign', 'summary'].includes(saved) ? saved : initial;
   if (key.endsWith('Mode')) return ['percent', 'amount'].includes(saved) ? saved : initial;
   if (key.endsWith('Value')) return amount(saved) ? saved : initial;

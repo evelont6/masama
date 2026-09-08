@@ -4,6 +4,14 @@ Buka langsung: **https://evelont6.github.io/masama/**
 
 Split bill gratis, tanpa akun, API key, atau backend berbayar. Ambil foto struk atau isi manual, tambah teman, tentukan pembagian, lalu bagikan ringkasan.
 
+## Bahasa, mata uang, dan desktop
+
+Pilih Bahasa Indonesia atau English serta mata uang tagihan (22 pilihan, termasuk IDR, USD, EUR, GBP, SGD, MYR, JPY, dan KWD). Pilihan tersimpan di perangkat. Satu tagihan memakai satu mata uang; mengganti mata uang tidak mengonversi kurs. Pembagian mengikuti pecahan mata uang dan menampilkan penyesuaian pembulatan supaya rincian cocok dengan total. IDR tetap memakai rupiah bulat.
+
+Di PC, pengaturan dan total ada di kolom kiri, area kerja di kanan. Foto bisa dipilih atau diseret ke kotak upload; dialog tampil di tengah. HP tetap menyediakan kamera dan galeri. Tampilan dan ringkasan share mengikuti bahasa serta mata uang yang dipilih.
+
+OCR memakai model aksara Latin/English. Pilihan mata uang tidak menambahkan pengenalan semua bahasa/aksara struk; periksa hasil scan atau isi manual bila tidak terbaca.
+
 ## Scan gratis
 
 Tesseract.js membaca foto langsung di browser. Foto tidak dikirim ke server. File OCR diunduh dari situs Masama saat pertama digunakan; proses berikutnya dapat memakai cache browser. File OCR tidak diunduh ketika pengguna hanya mengisi manual.

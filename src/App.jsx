@@ -1,4 +1,6 @@
 import { calculateBill, assignedPeople } from "./billing.js";
+import { CURRENCIES, currencyDigits, formatMoney } from './currency.js';
+import { useLocale } from './Locale.jsx';
 import React, { useState, useRef, useEffect } from "react";
 import {
   Camera,
@@ -63,11 +65,6 @@ function initials(name) {
     .toUpperCase();
 }
 
-function formatRp(n) {
-  if (n == null || isNaN(n)) return "Rp0";
-  return "Rp" + Math.round(n).toLocaleString("id-ID");
-}
-
 function Avatar({ name, color, size = 32 }) {
   return (
     <div
@@ -79,7 +76,8 @@ function Avatar({ name, color, size = 32 }) {
   );
 }
 
-function ChargeRow({ label, mode, setMode, value, setValue }) {
+function ChargeRow({ label, mode, setMode, value, setValue, currency }) {
+  const { t } = useLocale();
   return (
     <div className="flex items-center justify-between">
       <span className="text-sm" style={{ color: COLORS.textSecondary }}>
@@ -101,12 +99,13 @@ function ChargeRow({ label, mode, setMode, value, setValue }) {
             className="px-2.5 py-1 rounded-full text-xs font-medium"
             style={mode === "amount" ? { background: COLORS.accent, color: "#fff" } : { color: COLORS.textSecondary }}
           >
-            Rp
+            {currency}
           </button>
         </div>
         <input
           type="number"
-          aria-label={label + (mode === "percent" ? " persen" : " rupiah")}
+          step="any"
+          aria-label={label + (mode === "percent" ? " %" : " " + currency)}
           value={value || ""}
           onChange={(e) => setValue(Math.min(1000000000, Math.max(0, Number(e.target.value) || 0)))}
           placeholder="0"
@@ -118,6 +117,7 @@ function ChargeRow({ label, mode, setMode, value, setValue }) {
 }
 
 function ShareButton({ icon: Icon, label, onClick, tone = "default" }) {
+  const { t } = useLocale();
   return (
     <button
       type="button"
@@ -138,6 +138,9 @@ function ShareButton({ icon: Icon, label, onClick, tone = "default" }) {
 }
 
 export default function App() {
+  const { language, setLanguage, t } = useLocale();
+  const [currency, setCurrency] = useSavedState('currency', 'IDR');
+  const formatRp = value => formatMoney(value, currency, language);
   const [step, setStep] = useSavedState("step", "items");
 
   const [items, setItems] = useSavedState("items", []);
@@ -255,20 +258,20 @@ export default function App() {
   async function scanReceiptFile(file) {
     if (!file) return;
     if (!file.type.startsWith("image/") || file.size > 20 * 1024 * 1024) {
-      setReceiptError("Pilih foto JPG, PNG, atau WebP maksimal 20 MB."); return;
+      setReceiptError(t("Pilih foto JPG, PNG, atau WebP maksimal 20 MB.")); return;
     }
     setLoadingReceipt(true);
     setReceiptError(null);
-    setScanProgress("Menyiapkan foto...");
+    setScanProgress(t("Menyiapkan foto..."));
     const controller = new AbortController();
     scanController.current = controller;
     try {
-      const parsed = await scanReceipt(file, setScanProgress, controller.signal);
+      const parsed = await scanReceipt(file, setScanProgress, controller.signal, { currency, language });
       if (!controller.signal.aborted) setPendingReceipt(parsed);
     } catch (error) {
       if (!controller.signal.aborted) setReceiptError(navigator.onLine
-        ? "Foto belum berhasil dibaca. Gunakan foto jelas berformat JPG/PNG/WebP atau isi manual."
-        : "Pembaca struk belum siap offline. Sambungkan internet untuk scan pertama, atau isi manual.");
+        ? t("Foto belum berhasil dibaca. Gunakan foto jelas berformat JPG/PNG/WebP atau isi manual.")
+        : t("Pembaca struk belum siap offline. Sambungkan internet untuk scan pertama, atau isi manual."));
     } finally {
       scanController.current = null;
       setLoadingReceipt(false);
@@ -336,7 +339,7 @@ export default function App() {
   }
 
   function handleReset() {
-    if (!window.confirm("Mulai tagihan baru? Tagihan saat ini akan dihapus. Info pembayaran tetap tersimpan.")) return;
+    if (!window.confirm(t("Mulai tagihan baru? Tagihan saat ini akan dihapus. Info pembayaran tetap tersimpan."))) return;
     setItems([]);
     setPeople([]);
     setAssignments({});
@@ -351,26 +354,27 @@ export default function App() {
     setStep("items");
   }
 
-  const { computedSubtotal, taxAmount, serviceAmount, discount, grandTotal, perPerson } = calculateBill({ items, people, assignments, taxMode, taxValue, serviceMode, serviceValue, discountValue });
+  const { computedSubtotal, taxAmount, serviceAmount, discount, grandTotal, perPerson } = calculateBill({ items, people, assignments, taxMode, taxValue, serviceMode, serviceValue, discountValue, currency });
 
   function buildSummaryText() {
-    const lines = ["Masama — Ringkasan tagihan", ""];
+    const lines = [t("Masama — Ringkasan tagihan"), ""];
 
     perPerson.forEach((p) => {
       lines.push(`${p.name}: ${formatRp(p.amount)}`);
       p.breakdown.forEach((item) => {
-        lines.push(`  • ${item.name}: ${formatRp(item.share)} (dari ${formatRp(item.totalPrice)}, dibagi ${item.splitCount} orang)`);
+        lines.push(`  • ${item.name}: ${formatRp(item.share)} (${formatRp(item.totalPrice)} / ${item.splitCount} ${t('orang')})`);
       });
-      if (p.taxShare) lines.push(`  • Pajak: ${formatRp(p.taxShare)}`);
+      if (p.taxShare) lines.push(`  • ${t('Pajak')}: ${formatRp(p.taxShare)}`);
       if (p.serviceShare) lines.push(`  • Service: ${formatRp(p.serviceShare)}`);
-      if (p.discountShare) lines.push(`  • Diskon: -${formatRp(p.discountShare)}`);
+      if (p.discountShare) lines.push(`  • ${t('Diskon')}: -${formatRp(p.discountShare)}`);
+      if (p.roundingAdjustment) lines.push(`  • ${language === 'en' ? 'Rounding' : 'Pembulatan'}: ${formatRp(p.roundingAdjustment)}`);
       lines.push("");
     });
-    lines.push(`Total tagihan: ${formatRp(grandTotal)}`);
+    lines.push(`${t('Total tagihan')}: ${formatRp(grandTotal)}`);
     if (paymentMethods.length > 0) {
-      lines.push("", "Transfer ke:");
+      lines.push("", t("Transfer ke:"));
       paymentMethods.forEach((m) => {
-        lines.push(`${m.label} ${m.detail}${yourName ? " a.n. " + yourName : ""}`);
+        lines.push(`${m.label} ${m.detail}${yourName ? t(" a.n. ") + yourName : ""}`);
       });
     }
     return lines.join("\n");
@@ -393,7 +397,7 @@ export default function App() {
     const text = buildSummaryText();
     if (navigator.share) {
       try {
-        await navigator.share({ title: "Ringkasan tagihan Masama", text });
+        await navigator.share({ title: t("Ringkasan tagihan Masama"), text });
       } catch (e) {
         if (e.name !== "AbortError") setCopyState("error");
       }
@@ -423,31 +427,59 @@ export default function App() {
             onClick={openSettings}
             className="p-2 rounded-full"
             style={{ color: COLORS.textSecondary }}
-            aria-label="Pengaturan"
+            aria-label={t("Pengaturan")}
           >
             <Settings size={20} />
           </button>
         </div>
 
+        <div className="workspace-layout">
+        <aside className="workspace-sidebar">
         <MobileSupport />
+        <label className="flex items-center gap-3 mb-3 text-sm">
+          Language / Bahasa
+          <select value={language} onChange={event => setLanguage(event.target.value)} className="rounded-xl border border-gray-200 px-3 py-2">
+            <option value="id">Bahasa Indonesia</option><option value="en">English</option>
+          </select>
+        </label>
+        <label className="currency-picker flex flex-wrap items-center gap-3 mb-5 text-sm">{t("Mata uang tagihan")} <select value={currency} disabled={loadingReceipt || !!pendingReceipt} onChange={event => {
+            if (items.length && !window.confirm(t("Ganti mata uang tagihan? Angka yang sudah diisi tetap sama, tanpa konversi kurs."))) return;
+            setCurrency(event.target.value);
+          }} className="rounded-xl border border-gray-200 bg-white px-3 py-2">
+            {CURRENCIES.map(code => <option key={code} value={code}>{code}</option>)}
+          </select>
+          <span className="text-xs text-gray-500">{t("Pilih sesuai struk. Tanpa konversi kurs.")}</span>
+        </label>
         {step === "items" && <section className="mb-6 rounded-3xl bg-emerald-900 p-6 text-white">
-          <p className="text-xs font-semibold uppercase tracking-widest text-emerald-200">Bagi tagihan, tetap nyaman</p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight">Bareng-bareng.<br />Hitungnya gampang.</h2>
-          <p className="mt-3 text-sm text-emerald-100">Isi tagihan, tambah teman, lalu bagikan hasilnya. Draft tersimpan otomatis di perangkat ini.</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-emerald-200">{t("Bagi tagihan, tetap nyaman")}</p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight">{t("Bareng-bareng.")}<br />{t("Hitungnya gampang.")}</h2>
+          <p className="mt-3 text-sm text-emerald-100">{t("Isi tagihan, tambah teman, lalu bagikan hasilnya. Draft tersimpan otomatis di perangkat ini.")}</p>
         </section>}
-        <div className="flex items-center gap-1.5 mb-2">
+        {items.length > 0 && <section className="desktop-bill-overview">
+          <h2>{t('Total tagihan')}</h2>
+          <p className="text-2xl font-semibold mt-2 mb-4 tabular-nums">{formatRp(grandTotal)}</p>
+          <p className="flex justify-between"><span>Subtotal</span><span>{formatRp(computedSubtotal)}</span></p>
+          <p className="flex justify-between"><span>{t('Pajak')}</span><span>{formatRp(taxAmount)}</span></p>
+          <p className="flex justify-between"><span>Service</span><span>{formatRp(serviceAmount)}</span></p>
+          <p className="flex justify-between"><span>{t('Diskon')}</span><span>-{formatRp(discount)}</span></p>
+          <p className="mt-4 text-sm text-gray-500">{items.length} item · {people.length} {t('orang')}</p>
+        </section>}
+        </aside>
+        <main className="workspace-main">
+        <div className="step-navigation flex items-center gap-1.5 mb-2">
           {STEPS.map((s, i) => (
             <div key={s.key} className="flex-1">
               <div className="h-1 rounded-full" style={{ background: i <= stepIdx ? COLORS.accent : COLORS.border }} />
+              <span className="desktop-step-label">{i + 1}. {t(s.label)}</span>
             </div>
           ))}
         </div>
-        <p className="text-sm font-medium mb-2" aria-live="polite">Langkah {stepIdx + 1} dari 4 · {STEPS[stepIdx].label}</p>
-        <p className="text-sm mb-5" style={{ color: COLORS.textSecondary }}>{({ items: "Masukkan harga total setiap item, termasuk jumlah pesanannya.", people: "Tambahkan semua yang ikut, termasuk kamu.", assign: "Awalnya dibagi rata ke semua. Ketuk nama untuk mengubah siapa yang membayar tiap item.", summary: "Cek hasilnya, lalu salin atau bagikan ke teman." })[step]}</p>
+        <p className="text-sm font-medium mb-2" aria-live="polite">{t("Langkah")} {stepIdx + 1} {t("dari 4 ·")} {t(STEPS[stepIdx].label)}</p>
+        <p className="text-sm mb-5" style={{ color: COLORS.textSecondary }}>{({ items: t("Masukkan harga total setiap item, termasuk jumlah pesanannya."), people: t("Tambahkan semua yang ikut, termasuk kamu."), assign: t("Awalnya dibagi rata ke semua. Ketuk nama untuk mengubah siapa yang membayar tiap item."), summary: t("Cek hasilnya, lalu salin atau bagikan ke teman.") })[step]}</p>
 
         {step === "items" && (
           <div>
-            {pendingReceipt && <ReceiptReview receipt={pendingReceipt} onUse={useScannedReceipt} onCancel={() => setPendingReceipt(null)} />}
+            {pendingReceipt && <ReceiptReview currency={currency} receipt={pendingReceipt} onUse={useScannedReceipt} onCancel={() => setPendingReceipt(null)} />}
             {receiptError && (
               <div className="flex items-start gap-2 p-3 rounded-xl mb-4" style={{ background: COLORS.dangerSoft }}>
                 <AlertCircle size={16} style={{ color: COLORS.danger, marginTop: 2, flexShrink: 0 }} />
@@ -463,7 +495,7 @@ export default function App() {
                 <span role="status" aria-live="polite" className="text-sm" style={{ color: COLORS.textSecondary }}>
                   {scanProgress}
                 </span>
-                <button className="text-sm text-emerald-800" onClick={() => scanController.current?.abort()}>Batalkan scan</button>
+                <button className="text-sm text-emerald-800" onClick={() => scanController.current?.abort()}>{t("Batalkan scan")}</button>
               </div>
             )}
 
@@ -492,7 +524,7 @@ export default function App() {
                 />
                 <button
                   type="button"
-                  onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
+                  onClick={() => (window.matchMedia('(min-width: 900px)').matches ? galleryInputRef : cameraInputRef).current?.click()}
                   className="upload-zone-action w-full flex flex-col items-center justify-center gap-2 py-10 rounded-2xl"
                   style={{ border: `1.5px dashed ${isDragging ? COLORS.accent : COLORS.border}`, background: COLORS.surface }}
                 >
@@ -502,13 +534,12 @@ export default function App() {
                   >
                     <Camera size={22} />
                   </div>
-                  <span className="text-sm font-medium">Ambil foto struk</span>
-                  <span className="text-xs" style={{ color: COLORS.textSecondary }}>
-                    Gratis, dibaca di perangkat. Foto tidak dikirim ke server.
-                  </span>
+                  <span className="text-sm font-medium mobile-upload-label">{t("Ambil foto struk")}</span>
+                  <span className="text-sm font-medium desktop-upload-label">{t("Pilih dari galeri / file")}</span>
+                  <span className="text-xs" style={{ color: COLORS.textSecondary }}>{t("Gratis, dibaca di perangkat. Foto tidak dikirim ke server.")} </span>
                 </button>
                 <p className="upload-hint text-center text-xs" style={{ color: isDragging ? COLORS.accent : COLORS.textSecondary }}>
-                  {isDragging ? "Lepaskan foto struk di sini" : "Di komputer, tarik foto ke kotak ini atau pilih file"}
+                  {isDragging ? t("Lepaskan foto struk di sini") : t("Di komputer, tarik foto ke kotak ini atau pilih file")}
                 </p>
                 <div className="flex items-center justify-center gap-4 mt-3">
                   <button
@@ -516,18 +547,14 @@ export default function App() {
                     onClick={() => galleryInputRef.current && galleryInputRef.current.click()}
                     className="text-sm font-medium py-2"
                     style={{ color: COLORS.accent }}
-                  >
-                    Pilih dari galeri / file
-                  </button>
+                  >{t("Pilih dari galeri / file")} </button>
                   <span style={{ color: COLORS.border }}>|</span>
                   <button
                     type="button"
                     onClick={() => setItems([{ id: uid(), name: "", price: 0 }])}
                     className="text-sm font-medium py-2 px-5 rounded-full"
                     style={{ background: COLORS.accent, color: "#fff" }}
-                  >
-                    Isi manual
-                  </button>
+                  >{t("Isi manual")} </button>
                 </div>
               </div>
             )}
@@ -545,18 +572,19 @@ export default function App() {
                         <input
                           value={it.name}
                           onChange={(e) => updateItem(it.id, { name: e.target.value })}
-                          aria-label="Nama item"
+                          aria-label={t("Nama item")}
                           maxLength={120}
-                          placeholder="Nama item"
+                          placeholder={t("Nama item")}
                           className="flex-1 min-w-0 bg-transparent text-sm outline-none"
                         />
                         <div className="flex items-center gap-1 flex-shrink-0">
                           <span className="text-sm" style={{ color: COLORS.textSecondary }}>
-                            Rp
+                            {currency}
                           </span>
                           <input
                             type="number"
-                            aria-label={"Harga " + (it.name || "item")}
+                            step={10 ** -currencyDigits(currency)}
+                            aria-label={t("Harga ") + (it.name || "item")}
                             min="0"
                             max="1000000000"
                             value={it.price || ""}
@@ -567,7 +595,7 @@ export default function App() {
                         </div>
                         <button
                           type="button"
-                          aria-label={"Hapus " + (it.name || "item")}
+                          aria-label={t("Hapus ") + (it.name || "item")}
                           onClick={() => removeItem(it.id)}
                           className="p-1 flex-shrink-0"
                           style={{ color: COLORS.textSecondary }}
@@ -585,12 +613,12 @@ export default function App() {
                   className="w-full flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-medium mt-2 mb-5"
                   style={{ border: `1px dashed ${COLORS.border}`, color: COLORS.accent }}
                 >
-                  <Plus size={15} /> Tambah item
-                </button>
+                  <Plus size={15} />{t("Tambah item")} </button>
 
                 <div className="rounded-xl p-3.5 space-y-3" style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}` }}>
-                  <ChargeRow label="Pajak" mode={taxMode} setMode={setTaxMode} value={taxValue} setValue={setTaxValue} />
+                  <ChargeRow currency={currency} label={t("Pajak")} mode={taxMode} setMode={setTaxMode} value={taxValue} setValue={setTaxValue} />
                   <ChargeRow
+                    currency={currency}
                     label="Service"
                     mode={serviceMode}
                     setMode={setServiceMode}
@@ -598,16 +626,15 @@ export default function App() {
                     setValue={setServiceValue}
                   />
                   <div className="flex items-center justify-between">
-                    <span className="text-sm" style={{ color: COLORS.textSecondary }}>
-                      Diskon
-                    </span>
+                    <span className="text-sm" style={{ color: COLORS.textSecondary }}>{t("Diskon")} </span>
                     <div className="flex items-center gap-1">
                       <span className="text-sm" style={{ color: COLORS.textSecondary }}>
-                        Rp
+                        {currency}
                       </span>
                       <input
                         type="number"
-                        aria-label="Diskon rupiah"
+                        step={10 ** -currencyDigits(currency)}
+                        aria-label={t("Diskon ") + currency}
                         value={discountValue || ""}
                         onChange={(e) => setDiscountValue(Math.min(1000000000, Math.max(0, Number(e.target.value) || 0)))}
                         placeholder="0"
@@ -637,9 +664,7 @@ export default function App() {
                     background: computedSubtotal <= 0 ? COLORS.border : COLORS.accent,
                     color: computedSubtotal <= 0 ? COLORS.textSecondary : "#fff",
                   }}
-                >
-                  Lanjut: tambah teman
-                </button>
+                >{t("Lanjut: tambah teman")} </button>
               </div>
             )}
           </div>
@@ -654,15 +679,15 @@ export default function App() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleAddPerson();
                 }}
-                aria-label="Nama teman"
+                aria-label={t("Nama teman")}
                 maxLength={60}
-                placeholder="Nama teman"
-                className="flex-1 px-4 py-3 rounded-xl text-sm outline-none"
+                placeholder={t("Nama teman")}
+                className="flex-1 min-w-0 px-4 py-3 rounded-xl text-sm outline-none"
                 style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}` }}
               />
               <button
                 type="button"
-                aria-label="Tambah teman"
+                aria-label={t("Tambah teman")}
                 disabled={!newPersonName.trim() || people.some(p => p.name.toLocaleLowerCase() === newPersonName.trim().toLocaleLowerCase())}
                 onClick={handleAddPerson}
                 className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -681,15 +706,13 @@ export default function App() {
                 >
                   <Avatar name={p.name} color={p.color} size={36} />
                   <span className="flex-1 text-sm font-medium">{p.name}</span>
-                  <button type="button" aria-label={"Hapus " + p.name} onClick={() => removePerson(p.id)} style={{ color: COLORS.textSecondary }}>
+                  <button type="button" aria-label={t("Hapus ") + p.name} onClick={() => removePerson(p.id)} style={{ color: COLORS.textSecondary }}>
                     <X size={16} />
                   </button>
                 </div>
               ))}
               {people.length === 0 && (
-                <p className="text-sm text-center py-6" style={{ color: COLORS.textSecondary }}>
-                  Belum ada orang, tambahin dulu yuk
-                </p>
+                <p className="text-sm text-center py-6" style={{ color: COLORS.textSecondary }}>{t("Belum ada orang, tambahin dulu yuk")} </p>
               )}
             </div>
 
@@ -699,9 +722,7 @@ export default function App() {
                 onClick={() => setStep("items")}
                 className="flex-1 py-3.5 rounded-full font-medium text-sm"
                 style={{ border: `1px solid ${COLORS.border}` }}
-              >
-                Kembali
-              </button>
+              >{t("Kembali")} </button>
               <button
                 type="button"
                 onClick={() => setStep("assign")}
@@ -711,16 +732,14 @@ export default function App() {
                   background: people.length < 1 ? COLORS.border : COLORS.accent,
                   color: people.length < 1 ? COLORS.textSecondary : "#fff",
                 }}
-              >
-                Lanjut: bagi item
-              </button>
+              >{t("Lanjut: bagi item")} </button>
             </div>
           </div>
         )}
 
         {step === "assign" && (
           <div>
-            <div className="space-y-3 mb-5">
+            <div className="assignment-grid space-y-3 mb-5">
               {items.map((it) => {
                 const assigned = getAssigned(it.id);
                 return (
@@ -768,17 +787,13 @@ export default function App() {
                 onClick={() => setStep("people")}
                 className="flex-1 py-3.5 rounded-full font-medium text-sm"
                 style={{ border: `1px solid ${COLORS.border}` }}
-              >
-                Kembali
-              </button>
+              >{t("Kembali")} </button>
               <button
                 type="button"
                 onClick={() => setStep("summary")}
                 className="flex-1 py-3.5 rounded-full font-medium text-sm"
                 style={{ background: COLORS.accent, color: "#fff" }}
-              >
-                Lihat Ringkasan
-              </button>
+              >{t("Lihat Ringkasan")} </button>
             </div>
           </div>
         )}
@@ -786,9 +801,7 @@ export default function App() {
         {step === "summary" && (
           <div>
             <div className="text-center mb-6 py-2">
-              <p className="text-sm mb-1" style={{ color: COLORS.textSecondary }}>
-                Total tagihan
-              </p>
+              <p className="text-sm mb-1" style={{ color: COLORS.textSecondary }}>{t("Total tagihan")} </p>
               <p className="text-3xl font-semibold tabular-nums">{formatRp(grandTotal)}</p>
             </div>
 
@@ -819,24 +832,23 @@ export default function App() {
                     {expanded && (
                       <div className="person-breakdown px-3.5 pb-4">
                         <div className="flex items-center justify-between mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: COLORS.textSecondary }}>
-                          <span>Rincian harga</span>
-                          <span>Bagian {p.name}</span>
+                          <span>{t("Rincian harga")}</span>
+                          <span>{t("Bagian")} {p.name}</span>
                         </div>
                         <div className="space-y-2">
                           {p.breakdown.map((item) => (
                             <div key={item.id} className="flex items-start justify-between gap-3 text-sm">
                               <div className="min-w-0">
-                                <p className="font-medium truncate">{item.name}</p>
+                                <p className="font-medium">{item.name}</p>
                                 <p className="text-xs" style={{ color: COLORS.textSecondary }}>
-                                  {formatRp(item.totalPrice)} dibagi {item.splitCount} orang
-                                </p>
+                                  {formatRp(item.totalPrice)} {t("dibagi")} {item.splitCount} {t("orang")} </p>
                               </div>
                               <span className="shrink-0 font-medium tabular-nums">{formatRp(item.share)}</span>
                             </div>
                           ))}
                           {p.taxShare > 0 && (
                             <div className="flex justify-between gap-3 text-sm" style={{ color: COLORS.textSecondary }}>
-                              <span>Pajak</span><span className="tabular-nums">{formatRp(p.taxShare)}</span>
+                              <span>{t("Pajak")}</span><span className="tabular-nums">{formatRp(p.taxShare)}</span>
                             </div>
                           )}
                           {p.serviceShare > 0 && (
@@ -846,9 +858,12 @@ export default function App() {
                           )}
                           {p.discountShare > 0 && (
                             <div className="flex justify-between gap-3 text-sm" style={{ color: COLORS.danger }}>
-                              <span>Diskon</span><span className="tabular-nums">-{formatRp(p.discountShare)}</span>
+                              <span>{t("Diskon")}</span><span className="tabular-nums">-{formatRp(p.discountShare)}</span>
                             </div>
                           )}
+                          {!!p.roundingAdjustment && <div className="flex justify-between gap-3 text-sm text-gray-500">
+                            <span>{language === 'en' ? 'Rounding' : 'Pembulatan'}</span><span>{formatRp(p.roundingAdjustment)}</span>
+                          </div>}
                         </div>
                         <div className="flex justify-between gap-3 mt-3 pt-2 text-sm font-semibold" style={{ borderTop: `1px solid ${COLORS.border}` }}>
                           <span>Total {p.name}</span><span className="tabular-nums">{formatRp(p.amount)}</span>
@@ -863,7 +878,7 @@ export default function App() {
             <div className="rounded-xl p-4 mb-5" style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}` }}>
               <div className="flex items-center gap-2 mb-3">
                 <CreditCard size={16} style={{ color: COLORS.accent }} />
-                <span className="text-sm font-medium">Info pembayaran</span>
+                <span className="text-sm font-medium">{t("Info pembayaran")}</span>
               </div>
               {paymentMethods.length > 0 ? (
                 <div className="space-y-2">
@@ -875,15 +890,13 @@ export default function App() {
                   ))}
                   {yourName && (
                     <div className="flex justify-between text-xs mt-1" style={{ color: COLORS.textSecondary }}>
-                      <span>Atas nama</span>
+                      <span>{t("Atas nama")}</span>
                       <span>{yourName}</span>
                     </div>
                   )}
                 </div>
               ) : (
-                <button type="button" onClick={openSettings} className="text-xs text-left" style={{ color: COLORS.accent }}>
-                  Tambahin rekening/e-wallet kamu di pengaturan biar otomatis muncul di sini
-                </button>
+                <button type="button" onClick={openSettings} className="text-xs text-left" style={{ color: COLORS.accent }}>{t("Tambahin rekening/e-wallet kamu di pengaturan biar otomatis muncul di sini")} </button>
               )}
             </div>
 
@@ -895,7 +908,7 @@ export default function App() {
                 style={{ border: `1px solid ${COLORS.border}` }}
               >
                 {copyState === "copied" ? <Check size={16} /> : <Copy size={16} />}
-                {copyState === "copied" ? "Tersalin" : copyState === "error" ? "Gagal, coba salin lagi" : "Salin"}
+                {copyState === "copied" ? t("Tersalin") : copyState === "error" ? t("Gagal, coba salin lagi") : t("Salin")}
               </button>
               <button
                 type="button"
@@ -903,20 +916,19 @@ export default function App() {
                 className="flex-1 py-3.5 rounded-full font-medium text-sm flex items-center justify-center gap-1.5"
                 style={{ background: COLORS.accent, color: "#fff" }}
               >
-                <Share2 size={16} /> Bagikan
-              </button>
+                <Share2 size={16} />{t("Bagikan")} </button>
             </div>
-            <button type="button" onClick={() => setStep("assign")} className="w-full text-sm py-2 text-emerald-800">Ubah pembagian</button>
-            <button type="button" onClick={handleReset} className="w-full text-center text-sm py-2" style={{ color: COLORS.textSecondary }}>
-              Mulai split baru
-            </button>
+            <button type="button" onClick={() => setStep("assign")} className="w-full text-sm py-2 text-emerald-800">{t("Ubah pembagian")}</button>
+            <button type="button" onClick={handleReset} className="w-full text-center text-sm py-2" style={{ color: COLORS.textSecondary }}>{t("Mulai split baru")} </button>
           </div>
         )}
+        </main>
+        </div>
       </div>
 
         {settingsOpen && (
         <div
-          className="fixed inset-0 flex items-end justify-center z-50"
+          className="dialog-backdrop fixed inset-0 flex items-end justify-center z-50"
           style={{ background: "rgba(0,0,0,0.35)" }}
           onClick={() => setSettingsOpen(false)}
         >
@@ -924,47 +936,43 @@ export default function App() {
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-label="Pengaturan pembayaran"
+            aria-label={t("Pengaturan pembayaran")}
             className="w-full max-w-md rounded-t-3xl p-5 overflow-y-auto"
             style={{ background: COLORS.surface, maxHeight: "85vh" }}
           >
             <div className="flex justify-between items-center mb-5">
-              <h2 className="text-lg font-semibold">Pengaturan</h2>
-              <button aria-label="Tutup pengaturan" type="button" onClick={() => setSettingsOpen(false)}>
+              <h2 className="text-lg font-semibold">{t("Pengaturan")}</h2>
+              <button aria-label={t("Tutup pengaturan")} type="button" onClick={() => setSettingsOpen(false)}>
                 <X size={20} />
               </button>
             </div>
 
-            <label className="text-xs font-medium block mb-1.5" style={{ color: COLORS.textSecondary }}>
-              Nama kamu
-            </label>
+            <label className="text-xs font-medium block mb-1.5" style={{ color: COLORS.textSecondary }}>{t("Nama kamu")} </label>
             <input
               value={yourNameDraft}
               onChange={(e) => setYourNameDraft(e.target.value)}
-              aria-label="Nama pemilik rekening" placeholder="Nama kamu"
+              aria-label={t("Nama pemilik rekening")} placeholder={t("Nama kamu")}
               className="w-full px-4 py-3 rounded-xl text-sm outline-none mb-5"
               style={{ background: COLORS.bg, border: `1px solid ${COLORS.border}` }}
             />
 
-            <label className="text-xs font-medium block mb-2" style={{ color: COLORS.textSecondary }}>
-              Metode pembayaran
-            </label>
+            <label className="text-xs font-medium block mb-2" style={{ color: COLORS.textSecondary }}>{t("Metode pembayaran")} </label>
             <div className="space-y-2 mb-3">
               {methodsDraft.map((m) => (
                 <div key={m.id} className="flex items-center gap-2 p-3 rounded-xl" style={{ background: COLORS.bg }}>
                   <input
                     value={m.label}
                     onChange={(e) => updateMethodDraft(m.id, { label: e.target.value })}
-                    aria-label="Bank atau e-wallet" placeholder="BCA / GoPay"
+                    aria-label={t("Bank atau e-wallet")} placeholder={t("BCA / GoPay")}
                     className="w-24 bg-transparent text-sm outline-none flex-shrink-0"
                   />
                   <input
                     value={m.detail}
                     onChange={(e) => updateMethodDraft(m.id, { detail: e.target.value })}
-                    aria-label="Nomor rekening atau e-wallet" placeholder="Nomor / detail"
+                    aria-label={t("Nomor rekening atau e-wallet")} placeholder={t("Nomor / detail")}
                     className="flex-1 min-w-0 bg-transparent text-sm outline-none"
                   />
-                  <button type="button" aria-label="Hapus metode pembayaran" onClick={() => removeMethodDraft(m.id)} style={{ color: COLORS.textSecondary }}>
+                  <button type="button" aria-label={t("Hapus metode pembayaran")} onClick={() => removeMethodDraft(m.id)} style={{ color: COLORS.textSecondary }}>
                     <Trash2 size={15} />
                   </button>
                 </div>
@@ -976,23 +984,20 @@ export default function App() {
               className="flex items-center gap-1.5 text-sm font-medium mb-6"
               style={{ color: COLORS.accent }}
             >
-              <Plus size={16} /> Tambah metode
-            </button>
+              <Plus size={16} />{t("Tambah metode")} </button>
 
             <button
               type="button"
               onClick={handleSaveSettings}
               className="w-full py-3.5 rounded-full font-medium text-sm"
               style={{ background: COLORS.accent, color: "#fff" }}
-            >
-              Simpan
-            </button>
+            >{t("Simpan")} </button>
           </div>
         </div>
       )}
       {shareOpen && (
         <div
-          className="share-overlay fixed inset-0 flex items-end justify-center z-50"
+          className="dialog-backdrop share-overlay fixed inset-0 flex items-end justify-center z-50"
           style={{ background: "rgba(0,0,0,0.35)" }}
           onClick={() => setShareOpen(false)}
         >
@@ -1000,30 +1005,30 @@ export default function App() {
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-label="Bagikan ringkasan tagihan"
+            aria-label={t("Bagikan ringkasan tagihan")}
             className="share-sheet w-full max-w-2xl rounded-t-3xl p-5 overflow-y-auto"
             style={{ background: COLORS.surface, maxHeight: "92vh" }}
           >
             <div className="flex justify-between items-center mb-2">
               <div>
-                <h2 className="text-lg font-semibold">Bagikan tagihan</h2>
-                <p className="text-sm mt-1" style={{ color: COLORS.textSecondary }}>Pilih aplikasi atau salin pesan lengkapnya.</p>
+                <h2 className="text-lg font-semibold">{t("Bagikan tagihan")}</h2>
+                <p className="text-sm mt-1" style={{ color: COLORS.textSecondary }}>{t("Pilih aplikasi atau salin pesan lengkapnya.")}</p>
               </div>
-              <button aria-label="Tutup bagikan" type="button" onClick={() => setShareOpen(false)}>
+              <button aria-label={t("Tutup bagikan")} type="button" onClick={() => setShareOpen(false)}>
                 <X size={20} />
               </button>
             </div>
 
-            <pre className="share-preview whitespace-pre-wrap break-words rounded-2xl p-4 text-sm leading-relaxed" aria-label="Pratinjau pesan yang dibagikan">{buildSummaryText()}</pre>
+            <pre className="share-preview whitespace-pre-wrap break-words rounded-2xl p-4 text-sm leading-relaxed" aria-label={t("Pratinjau pesan yang dibagikan")}>{buildSummaryText()}</pre>
 
             <div className="share-grid grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-4">
               <ShareButton icon={MessageCircle} label="WhatsApp" onClick={() => openShareUrl(`https://wa.me/?text=${encodeURIComponent(buildSummaryText())}`)} tone="accent" />
               <ShareButton icon={Send} label="Telegram" onClick={() => openShareUrl(`https://t.me/share/url?url=&text=${encodeURIComponent(buildSummaryText())}`)} />
-              <ShareButton icon={Mail} label="Email" onClick={() => openShareUrl(`mailto:?subject=${encodeURIComponent("Ringkasan tagihan Masama")}&body=${encodeURIComponent(buildSummaryText())}`)} />
-              <ShareButton icon={Copy} label={copyState === "copied" ? "Tersalin" : "Salin pesan"} onClick={handleCopy} />
-              <ShareButton icon={Smartphone} label="Aplikasi lainnya" onClick={handleNativeShare} />
+              <ShareButton icon={Mail} label="Email" onClick={() => openShareUrl(`mailto:?subject=${encodeURIComponent(t("Ringkasan tagihan Masama"))}&body=${encodeURIComponent(buildSummaryText())}`)} />
+              <ShareButton icon={Copy} label={copyState === "copied" ? t("Tersalin") : t("Salin pesan")} onClick={handleCopy} />
+              <ShareButton icon={Smartphone} label={t("Aplikasi lainnya")} onClick={handleNativeShare} />
             </div>
-            <p className="text-center text-xs mt-3" style={{ color: COLORS.textSecondary }}>Aplikasi lainnya memakai share sheet bawaan perangkat jika tersedia.</p>
+            <p className="text-center text-xs mt-3" style={{ color: COLORS.textSecondary }}>{t("Aplikasi lainnya memakai share sheet bawaan perangkat jika tersedia.")}</p>
           </div>
         </div>
       )}

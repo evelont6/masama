@@ -21,3 +21,13 @@ test('keeps raw uncertain text and does not invent prices from percentages', () 
   assert.deepEqual(result.items, [{name:'Es Kopi',price:18000}]);
   assert.equal(result.tax_amount, null);
 });
+test('reads international currency markers and decimal values', () => {
+  const usd = parseReceiptText('Coffee $ 10.50\nTax USD 1.05\nTotal USD 11.55', 'USD');
+  assert.equal(usd.items[0].price, 10.5);
+  assert.equal(usd.tax_amount, 1.05);
+  assert.equal(usd.total, 11.55);
+  const eur = parseReceiptText('Coffee 10,50 EUR\nTotal 10,50 €', 'EUR');
+  assert.equal(eur.items[0].price, 10.5);
+  assert.equal(eur.total, 10.5);
+  assert.equal(parseMoney('1.250', 'KWD'), 1.25);
+});

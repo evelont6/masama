@@ -12,7 +12,7 @@ body { margin: 0; padding: 0; }
 }
 .app-shell {
   box-sizing: border-box;
-  width: min(100%, 960px);
+  width: min(100%, 1240px);
   min-height: calc(100vh - 64px);
   padding: 28px 36px 40px;
   background: #fff;
@@ -20,7 +20,32 @@ body { margin: 0; padding: 0; }
   border-radius: 28px;
   box-shadow: 0 18px 60px rgba(21, 66, 51, .12);
 }
-.app-content { width: min(100%, 760px); margin: 0 auto; }
+.app-content { width: 100%; margin: 0 auto; }
+.workspace-sidebar, .workspace-main { min-width: 0; }
+.desktop-bill-overview, .desktop-step-label, .desktop-upload-label { display: none; }
+select { min-height: 44px; max-width: 100%; }
+[role="dialog"] { overscroll-behavior: contain; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+.share-preview { overflow-wrap: anywhere; }
+@media (min-width: 900px) {
+  .workspace-layout { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 40px; align-items: start; }
+  .workspace-sidebar { position: sticky; top: 24px; }
+  .workspace-main { padding: 8px 0 24px; }
+  .desktop-bill-overview { display: block; background: #f4f8f6; border: 1px solid #dce8e3; border-radius: 20px; padding: 20px; line-height: 1.8; }
+  .desktop-step-label { display: block; margin-top: 10px; font-size: 13px; color: #62636B; }
+  .step-navigation { margin-bottom: 24px; }
+  .desktop-upload-label { display: inline; }
+  .mobile-upload-label { display: none; }
+  .upload-zone-action { min-height: 280px; padding: 32px 20px; }
+  .dialog-backdrop { align-items: center; padding: 24px; }
+  .dialog-backdrop > [role="dialog"] { border-radius: 24px; max-height: calc(100dvh - 48px) !important; box-shadow: 0 24px 80px #0003; }
+  .share-sheet { max-width: 760px; }
+  .share-preview { max-height: 40vh; }
+  .workspace-main input[type="number"] { width: 112px; }
+}
+@media (min-width: 1200px) {
+  .assignment-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .assignment-grid > * { margin: 0; }
+}
 .upload-zone { border-radius: 20px; transition: background-color .15s ease, box-shadow .15s ease; }
 .upload-zone.is-dragging { background: #E4F3EE; box-shadow: 0 0 0 3px rgba(14, 124, 90, .18); }
 .upload-zone-action { transition: border-color .15s ease, background-color .15s ease, transform .15s ease; }
@@ -43,6 +68,6 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 @media (max-width: 640px) {
   html { background: #F5F5F7; }
   .app-page { padding: 0; }
-  .app-shell { width: 100%; min-height: 100vh; padding: 24px 16px 32px; border: 0; border-radius: 0; box-shadow: none; }
+  .app-shell { width: 100%; min-height: 100dvh; padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); border: 0; border-radius: 0; box-shadow: none; }
   .share-sheet { border-radius: 24px 24px 0 0; }
 }

@@ -18,7 +18,7 @@ async function prepareImage(file) {
   } finally { URL.revokeObjectURL(url); }
 }
 
-export async function scanReceipt(file, onProgress, signal) {
+export async function scanReceipt(file, onProgress, signal, { currency = 'IDR', language = 'id' } = {}) {
   let worker;
   let timer;
   let abort;
@@ -33,14 +33,14 @@ export async function scanReceipt(file, onProgress, signal) {
     const { createWorker } = await import('tesseract.js');
     if (finished) return;
     const base = new URL(`${import.meta.env.BASE_URL}ocr/`, location.origin).href;
-    onProgress('Menyiapkan pembaca struk. Unduhan pertama bisa memerlukan waktu...');
+    onProgress(language === 'en' ? 'Preparing receipt scanner. The first download may take a moment...' : 'Menyiapkan pembaca struk. Unduhan pertama bisa memerlukan waktu...');
     worker = await createWorker('eng', 1, {
       workerPath: `${base}worker.min.js`,
       corePath: base,
       langPath: base,
       workerBlobURL: false,
       logger: message => {
-        if (!finished && message.status === 'recognizing text') onProgress(`Membaca struk: ${Math.round(message.progress * 100)}%`);
+        if (!finished && message.status === 'recognizing text') onProgress(`${language === 'en' ? 'Reading receipt' : 'Membaca struk'}: ${Math.round(message.progress * 100)}%`);
       },
       errorHandler: () => {},
     });
@@ -49,7 +49,7 @@ export async function scanReceipt(file, onProgress, signal) {
     if (finished) return;
     await worker.setParameters({ preserve_interword_spaces: '1' });
     const { data } = await worker.recognize(image);
-    return parseReceiptText(data.text);
+    return parseReceiptText(data.text, currency);
   };
   try { return await Promise.race([run(), stopped]); }
   finally {

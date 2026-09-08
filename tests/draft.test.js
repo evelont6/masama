@@ -10,3 +10,9 @@ test('malformed and duplicate saved entries cannot crash the bill', () => {
   assert.deepEqual(validateDraft('items', [null, 42, {}, item, item], []), [item]);
   assert.deepEqual(validateDraft('assignments', {a:null, b:['p', null]}, {}), {b:['p']});
 });
+test('invalid saved international preferences recover safely', () => {
+  assert.equal(validateDraft('currency', 'INVALID', 'IDR'), 'IDR');
+  assert.equal(validateDraft('currency', 'USD', 'IDR'), 'USD');
+  assert.equal(validateDraft('language', 'xx', 'id'), 'id');
+  assert.equal(validateDraft('language', 'en', 'id'), 'en');
+});

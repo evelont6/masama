@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
+import { LocaleProvider } from './Locale.jsx';
 import "./index.css";
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
@@ -11,6 +12,6 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <App />
+    <LocaleProvider><App /></LocaleProvider>
   </React.StrictMode>
 );
