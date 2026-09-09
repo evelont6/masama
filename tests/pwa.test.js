@@ -11,5 +11,8 @@ test("install manifest references real PNG icons", async () => {
     assert.equal(data.readUInt32BE(16), size);
     assert.equal(data.readUInt32BE(20), size);
   }
-  await access("public/icons/apple-touch-icon.png");
+  const html = await readFile("index.html", "utf8");
+  const appleIcon = html.match(/rel="apple-touch-icon"[^>]*href="%BASE_URL%([^"]+)"/);
+  assert.ok(appleIcon, "HTML must reference an Apple touch icon");
+  await access(`public/${appleIcon[1]}`);
 });
