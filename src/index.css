@@ -49,6 +49,8 @@ select { min-height: 44px; max-width: 100%; }
 .upload-zone { border-radius: 20px; transition: background-color .15s ease, box-shadow .15s ease; }
 .upload-zone.is-dragging { background: #E4F3EE; box-shadow: 0 0 0 3px rgba(14, 124, 90, .18); }
 .upload-zone-action { transition: border-color .15s ease, background-color .15s ease, transform .15s ease; }
+.upload-zone.has-items { margin-bottom: 20px; }
+.upload-zone.has-items .upload-zone-action { min-height: 0; padding: 16px; }
 .upload-zone.is-dragging .upload-zone-action { background: #F4FCF9 !important; }
 .upload-hint { margin: 8px 0 0; }
 .share-preview { max-height: 34vh; overflow: auto; background: #F5F5F7; color: #16171A; border: 1px solid #E3E3E6; }

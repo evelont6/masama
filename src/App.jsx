@@ -256,7 +256,7 @@ export default function App() {
   }
 
   async function scanReceiptFile(file) {
-    if (!file) return;
+    if (!file || scanController.current) return;
     if (!file.type.startsWith("image/") || file.size > 20 * 1024 * 1024) {
       setReceiptError(t("Pilih foto JPG, PNG, atau WebP maksimal 20 MB.")); return;
     }
@@ -295,6 +295,7 @@ export default function App() {
   }
 
   function useScannedReceipt() {
+    if (items.length && !window.confirm(t("Ganti item dan biaya saat ini dengan hasil scan?"))) return;
     setItems(pendingReceipt.items.map(item => ({ ...item, id: uid() })));
     setAssignments({});
     setTaxMode("amount");
@@ -499,9 +500,9 @@ export default function App() {
               </div>
             )}
 
-            {!loadingReceipt && !pendingReceipt && items.length === 0 && (
+            {!loadingReceipt && !pendingReceipt && (
               <div
-                className={`upload-zone ${isDragging ? "is-dragging" : ""}`}
+                className={`upload-zone ${items.length ? "has-items" : ""} ${isDragging ? "is-dragging" : ""}`}
                 onDragEnter={(e) => { e.preventDefault(); setIsDragging(true); }}
                 onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setIsDragging(true); }}
                 onDragLeave={handleDragLeave}
@@ -524,7 +525,7 @@ export default function App() {
                 />
                 <button
                   type="button"
-                  onClick={() => (window.matchMedia('(min-width: 900px)').matches ? galleryInputRef : cameraInputRef).current?.click()}
+                  onClick={() => cameraInputRef.current?.click()}
                   className="upload-zone-action w-full flex flex-col items-center justify-center gap-2 py-10 rounded-2xl"
                   style={{ border: `1.5px dashed ${isDragging ? COLORS.accent : COLORS.border}`, background: COLORS.surface }}
                 >
@@ -534,8 +535,7 @@ export default function App() {
                   >
                     <Camera size={22} />
                   </div>
-                  <span className="text-sm font-medium mobile-upload-label">{t("Ambil foto struk")}</span>
-                  <span className="text-sm font-medium desktop-upload-label">{t("Pilih dari galeri / file")}</span>
+                  <span className="text-sm font-medium">{t("Ambil foto struk")}</span>
                   <span className="text-xs" style={{ color: COLORS.textSecondary }}>{t("Gratis, dibaca di perangkat. Foto tidak dikirim ke server.")} </span>
                 </button>
                 <p className="upload-hint text-center text-xs" style={{ color: isDragging ? COLORS.accent : COLORS.textSecondary }}>
@@ -548,13 +548,13 @@ export default function App() {
                     className="text-sm font-medium py-2"
                     style={{ color: COLORS.accent }}
                   >{t("Pilih dari galeri / file")} </button>
-                  <span style={{ color: COLORS.border }}>|</span>
+                  {items.length === 0 && <><span style={{ color: COLORS.border }}>|</span>
                   <button
                     type="button"
                     onClick={() => setItems([{ id: uid(), name: "", price: 0 }])}
                     className="text-sm font-medium py-2 px-5 rounded-full"
                     style={{ background: COLORS.accent, color: "#fff" }}
-                  >{t("Isi manual")} </button>
+                  >{t("Isi manual")} </button></>}
                 </div>
               </div>
             )}
